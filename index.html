@@ -319,11 +319,13 @@
   }
   .reply-quote b{ color:var(--user-blue); font-weight:600; }
   .msg-actions{ display:flex; gap:12px; margin-top:6px; opacity:0; transition:opacity .15s; }
-  .msg-row.other:hover .msg-actions{ opacity:1; }
+  .msg-row.other:hover .msg-actions, .msg-row.me:hover .msg-actions{ opacity:1; }
   .msg-action-btn{
+    display:inline-flex; align-items:center; gap:4px;
     background:none; border:none; cursor:pointer; font-size:12px; color:var(--muted-2);
     padding:2px 0; font-family:var(--mono);
   }
+  .msg-action-btn svg{ width:12px; height:12px; flex-shrink:0; }
   .msg-action-btn:hover{ color:var(--user-blue); }
   .msg-reactions{ margin-top:6px; font-size:12px; color:var(--danger); font-family:var(--mono); }
 
@@ -585,19 +587,19 @@
 
   <!-- ROOM OPTIONS POPUP (three-dot menu) -->
   <div class="room-popup" id="roomPopup">
-    <button data-action="switch">
+    <button data-action="switch" title="Switch to this room (Enter)">
       <svg viewBox="0 0 20 20" fill="none"><path d="M4 7h11M15 7l-3-3M15 7l-3 3M16 13H5M5 13l3 3M5 13l3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Switch to room
     </button>
-    <button data-action="edit">
+    <button data-action="edit" title="Edit name">
       <svg viewBox="0 0 20 20" fill="none"><path d="M13.5 3.5l3 3L7 16H4v-3L13.5 3.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Edit name
     </button>
-    <button data-action="key">
+    <button data-action="key" title="Show room key">
       <svg viewBox="0 0 20 20" fill="none"><circle cx="6.5" cy="13.5" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M8.6 11.4L15 5m0 0h-3m3 0v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Show room key
     </button>
-    <button data-action="delete" class="danger">
+    <button data-action="delete" class="danger" title="Delete room (Delete or Ctrl+D)">
       <svg viewBox="0 0 20 20" fill="none"><path d="M5 6h10M8.5 6V4.5h3V6M6 6l.6 9.2a1 1 0 001 .8h4.8a1 1 0 001-.8L14 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Delete room
     </button>
@@ -829,6 +831,7 @@
   let popupRoomId = null;
   let editingRoomId = null;
   let keyEditRoomId = null;
+  let hoveredRoomId = null;
 
   function setStatus(text, isError){
     statusLine.textContent = text || '';
@@ -895,9 +898,18 @@
     row.appendChild(reactionsEl);
     messageReactionEls.set(msgId, reactionsEl);
 
+    const actions = document.createElement('div');
+    actions.className = 'msg-actions';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'msg-action-btn';
+    copyBtn.type = 'button';
+    copyBtn.title = 'Copy message';
+    copyBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="none"><rect x="7" y="7" width="9" height="10" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M5 12.5V5.5A1.5 1.5 0 016.5 4H12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span>Copy</span>';
+    copyBtn.addEventListener('click', () => copyMessageText(data.text, copyBtn));
+    actions.appendChild(copyBtn);
+
     if (kind === 'other'){
-      const actions = document.createElement('div');
-      actions.className = 'msg-actions';
       const reactBtn = document.createElement('button');
       reactBtn.className = 'msg-action-btn';
       reactBtn.textContent = '♡ React';
@@ -908,13 +920,23 @@
       replyBtn.addEventListener('click', () => startReply(data.sender, data.text));
       actions.appendChild(reactBtn);
       actions.appendChild(replyBtn);
-      row.appendChild(actions);
     }
+    row.appendChild(actions);
 
     messageEls.set(msgId, row);
     messagesEl.appendChild(row);
     updateReactionDisplay(msgId, data.reactions || 0);
     messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function copyMessageText(text, btn){
+    try { navigator.clipboard && navigator.clipboard.writeText(text); } catch(e){}
+    if (btn){
+      const label = btn.querySelector('span');
+      const original = label ? label.textContent : 'Copy';
+      if (label) label.textContent = 'Copied!';
+      setTimeout(() => { if (label) label.textContent = original; }, 1200);
+    }
   }
 
   function updateReactionDisplay(msgId, count){
@@ -1220,6 +1242,9 @@
     rooms.forEach((room) => {
       const item = document.createElement('div');
       item.className = 'room-item' + (room.id === activeRoomId ? ' active' : '');
+      item.title = roomLabel(room) + ' — Enter to switch, Delete or Ctrl+D to remove';
+      item.addEventListener('mouseenter', () => { hoveredRoomId = room.id; });
+      item.addEventListener('mouseleave', () => { if (hoveredRoomId === room.id) hoveredRoomId = null; });
 
       const nameEl = document.createElement('div');
       nameEl.className = 'room-name';
@@ -1228,14 +1253,14 @@
 
       const switchBtn = document.createElement('button');
       switchBtn.className = 'room-switch-btn';
-      switchBtn.title = 'Switch to this room';
+      switchBtn.title = 'Switch to this room (Enter)';
       switchBtn.textContent = '⇄';
       switchBtn.addEventListener('click', (e) => { e.stopPropagation(); requestSwitch(room); });
       item.appendChild(switchBtn);
 
       const moreBtn = document.createElement('button');
       moreBtn.className = 'room-more-btn';
-      moreBtn.title = 'Room options';
+      moreBtn.title = 'Room options (Delete or Ctrl+D to remove)';
       moreBtn.textContent = '⋮';
       moreBtn.addEventListener('click', (e) => { e.stopPropagation(); openRoomPopup(room, moreBtn); });
       item.appendChild(moreBtn);
@@ -1244,6 +1269,24 @@
       roomsListEl.appendChild(item);
     });
   }
+
+  // ---- Keyboard shortcuts for the hovered room row ----
+  // Enter switches to it; Delete or Ctrl/Cmd+D removes it — same actions as
+  // the row's own buttons, just reachable without moving to the mouse.
+  document.addEventListener('keydown', (e) => {
+    if (!hoveredRoomId) return;
+    const active = document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+    const room = rooms.find((r) => r.id === hoveredRoomId);
+    if (!room) return;
+    if (e.key === 'Delete' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd')){
+      e.preventDefault();
+      requestDeleteRoom(room);
+    } else if (e.key === 'Enter'){
+      e.preventDefault();
+      requestSwitch(room);
+    }
+  });
 
   // ---- Generic confirm modal (used by switch + delete) ----
   function askConfirm(title, text, confirmLabel, onConfirm){
@@ -1303,9 +1346,25 @@
     const roomId = sanitizeRoomId(code);
     const existing = rooms.find((r) => r.id === roomId);
     if (existing){
-      if (name) existing.label = name;
-      persistState();
-      renderRoomsList();
+      if (name){
+        const hasCustomLabel = !!(existing.label && existing.label.trim());
+        if (!hasCustomLabel){
+          existing.label = name;
+          persistState();
+          renderRoomsList();
+          if (existing.id === activeRoomId) setActiveRoomDisplay(existing);
+        } else {
+          const baseLabel = existing.label.trim().replace(/\s*\(@.*\)\s*$/, '');
+          if (name !== baseLabel){
+            const combined = baseLabel + ' (@' + name + ')';
+            existing.label = combined;
+            persistState();
+            renderRoomsList();
+            if (existing.id === activeRoomId) setActiveRoomDisplay(existing);
+            alert('This room is already saved as "' + baseLabel + '", so its name wasn\'t replaced — now shown as "' + combined + '".');
+          }
+        }
+      }
       closeAddRoomModal();
       requestSwitch(existing);
       return;
@@ -1449,16 +1508,26 @@
   }
   async function performDeleteRoom(room){
     const wasActive = room.id === activeRoomId;
-    if (wasActive) teardownCurrentRoom();
-    rooms = rooms.filter((r) => r.id !== room.id);
-    if (wasActive){
-      activeRoomId = '';
-      persistState();
-      if (rooms.length) await switchToRoom(rooms[0]);
-      else location.reload();
-    } else {
+    showRippleTransition('Deleting room…');
+    try {
+      if (wasActive) teardownCurrentRoom();
+      rooms = rooms.filter((r) => r.id !== room.id);
+      if (wasActive){
+        activeRoomId = '';
+        persistState();
+        if (rooms.length){
+          await switchToRoom(rooms[0]); // manages its own ripple label + hide
+          return;
+        }
+        await sleep(400);
+        location.reload();
+        return;
+      }
       persistState();
       renderRoomsList();
+      await sleep(300);
+    } finally {
+      hideRippleTransition();
     }
   }
 
@@ -1502,12 +1571,13 @@
   // Leaving is the only action that drops this room from the device's
   // saved room list — refreshing the page alone always reconnects.
   function leaveRoom(){
+    showRippleTransition('Leaving room…');
     notifyLeaving();
     cleanupListeners();
     rooms = rooms.filter((r) => r.id !== activeRoomId);
     activeRoomId = rooms.length ? rooms[0].id : '';
     persistState();
-    location.reload();
+    setTimeout(() => location.reload(), 550);
   }
 
   connectBtn.addEventListener('click', async () => {
@@ -1596,6 +1666,7 @@
   clearConfirmBtn.addEventListener('click', async () => {
     clearModal.classList.remove('active');
     if (!messagesRef) return;
+    showRippleTransition('Clearing chat…');
     try {
       let snap = await messagesRef.limit(450).get();
       while (!snap.empty){
@@ -1605,8 +1676,11 @@
         if (snap.size < 450) break;
         snap = await messagesRef.limit(450).get();
       }
+      await sleep(300);
     } catch (err) {
       console.error('clear chat failed:', err);
+    } finally {
+      hideRippleTransition();
     }
   });
 
