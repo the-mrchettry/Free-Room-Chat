@@ -114,8 +114,8 @@
     font-family:var(--serif); font-weight:500; font-size:16px; letter-spacing:0.2px;
     padding:20px 20px 0;
   }
-  .site-logo{ height:24px; width:auto; flex-shrink:0; display:block; }
-  .brand-logo{ height:30px; width:auto; display:block; }
+  .site-logo{ height:26px; width:26px; flex-shrink:0; display:block; border-radius:50%; object-fit:cover; }
+  .brand-logo{ height:34px; width:34px; display:block; border-radius:50%; object-fit:cover; }
 
   .sidebar-backdrop{
     position:fixed; inset:0; background:rgba(0,0,0,0.55);
@@ -141,8 +141,8 @@
   .members-list{ max-height:40%; }
   .left-list{ max-height:22%; }
   .member-item{ display:flex; align-items:center; gap:10px; padding:7px 8px; font-size:13.5px; }
-  .member-dot{ width:6px; height:6px; border-radius:50%; flex-shrink:0; background:var(--dot-color, var(--accent)); }
-  .member-dot.left{ background:var(--muted-2); }
+  .member-dot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; background:#4ade80; box-shadow:0 0 6px rgba(74,222,128,0.6); }
+  .member-dot.left{ background:#e05c5c; box-shadow:0 0 6px rgba(224,92,92,0.5); }
   .member-name{ font-weight:500; color:var(--name-color, var(--text)); }
   .member-name.you::after{ content:' — you'; color:var(--muted); font-weight:400; }
   .left-item .member-name{ color:var(--muted); text-decoration:line-through; text-decoration-color:var(--muted-2); }
@@ -153,6 +153,67 @@
     cursor:pointer; font-size:13px; font-weight:500; transition:color .15s, border-color .15s;
   }
   .leave-btn:hover{ color:var(--danger); border-color:var(--danger); }
+
+  /* ---------- Multi-room sidebar list ---------- */
+  .rooms-section{ padding:14px 20px 4px; border-bottom:1px solid var(--border-soft); }
+  .rooms-section-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .rooms-section-head .rooms-label{ font-size:11px; color:var(--muted-2); font-weight:500; }
+  .add-room-btn{
+    width:22px; height:22px; border-radius:50%; border:1px solid var(--border);
+    background:transparent; color:var(--muted); font-size:15px; line-height:1;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    transition:color .15s, border-color .15s;
+  }
+  .add-room-btn:hover{ color:var(--accent); border-color:var(--accent); }
+  .rooms-list{ max-height:26%; overflow-y:auto; margin-bottom:8px; }
+  .room-item{
+    display:flex; align-items:center; gap:6px; padding:7px 8px;
+    font-size:13px; cursor:pointer; border-radius:6px; color:var(--muted);
+    transition:background .15s, color .15s;
+  }
+  .room-item:hover{ background:rgba(255,255,255,0.04); color:var(--text); }
+  .room-item.active{ background:rgba(209,163,92,0.1); color:var(--text); }
+  .room-item.active .room-name{ color:var(--accent); font-weight:600; }
+  .room-name{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .room-switch-btn, .room-more-btn{
+    background:none; border:none; color:var(--muted-2); cursor:pointer;
+    font-size:13px; padding:2px 4px; flex-shrink:0; line-height:1;
+  }
+  .room-switch-btn:hover, .room-more-btn:hover{ color:var(--accent); }
+
+  .room-popup{
+    position:fixed; z-index:40; background:var(--bg-raised); border:1px solid var(--border);
+    box-shadow:0 8px 24px rgba(0,0,0,0.45); display:none; flex-direction:column;
+    min-width:170px; padding:6px;
+  }
+  .room-popup.active{ display:flex; }
+  .room-popup button{
+    background:none; border:none; color:var(--text); text-align:left;
+    font-family:var(--sans); font-size:13px; padding:8px 10px; cursor:pointer;
+  }
+  .room-popup button:hover{ background:rgba(255,255,255,0.06); }
+  .room-popup button.danger{ color:var(--danger); }
+
+  /* ---------- Room switch ripple transition ---------- */
+  .switch-overlay{
+    position:fixed; inset:0; background:var(--bg); z-index:50;
+    display:none; align-items:center; justify-content:center;
+    opacity:0; transition:opacity .25s ease;
+  }
+  .switch-overlay.active{ display:flex; opacity:1; }
+  .ripple-wrap{ position:relative; width:200px; height:200px; display:flex; align-items:center; justify-content:center; }
+  .ripple-bubble{
+    position:absolute; border-radius:50%; border:1px solid var(--accent); opacity:0;
+    animation:rippleGrow 1.8s ease-out infinite;
+  }
+  @keyframes rippleGrow{
+    0%{ width:16px; height:16px; opacity:0.9; }
+    100%{ width:240px; height:240px; opacity:0; }
+  }
+  .ripple-label{
+    position:relative; z-index:2; font-family:var(--serif); font-size:16px; color:var(--text);
+    padding:6px 16px; white-space:nowrap; max-width:70vw; overflow:hidden; text-overflow:ellipsis;
+  }
 
   .chat-main{ flex:1; display:flex; flex-direction:column; min-width:0; height:100%; }
   .chat-header{
@@ -219,14 +280,18 @@
     min-height:20px; display:flex; align-items:center; gap:6px;
   }
   .typing-name{ color:var(--user-blue); font-weight:500; }
-  .typing-dots{ display:inline-flex; gap:3px; }
+  .typing-dots{ display:inline-flex; gap:4px; align-items:flex-end; height:14px; }
   .typing-dots span{
-    width:4px; height:4px; border-radius:50%; background:var(--user-blue);
-    opacity:0.3; animation:typingBlink 1.2s infinite;
+    width:6px; height:6px; border-radius:50%; background:var(--user-blue);
+    opacity:0.4; animation:typingBounce 1.2s infinite ease-in-out;
   }
+  .typing-dots span:nth-child(1){ animation-delay:0s; }
   .typing-dots span:nth-child(2){ animation-delay:0.2s; }
   .typing-dots span:nth-child(3){ animation-delay:0.4s; }
-  @keyframes typingBlink{ 0%,80%,100%{opacity:0.3;} 40%{opacity:1;} }
+  @keyframes typingBounce{
+    0%,60%,100%{ transform:translateY(0); opacity:0.4; }
+    30%{ transform:translateY(-6px); opacity:1; }
+  }
 
   .reply-quote{
     border-left:2px solid var(--muted-2); padding:4px 10px; margin-bottom:6px;
@@ -340,9 +405,12 @@
         <img class="site-logo" src="images/Freeroomchat_logo.png" alt="Free Room Chat logo">
         <span>Free Room Chat</span>
       </div>
-      <div class="sidebar-header">
-        <div class="room-label">Room</div>
-        <div class="room-code" id="roomCodeLabel">—</div>
+      <div class="rooms-section">
+        <div class="rooms-section-head">
+          <span class="rooms-label">Your rooms</span>
+          <button class="add-room-btn" id="addRoomBtn" title="Add a room" aria-label="Add a room">+</button>
+        </div>
+        <div class="rooms-list" id="roomsList"></div>
       </div>
       <div class="section-label">Members</div>
       <div class="members-list" id="membersList"></div>
@@ -355,7 +423,7 @@
         <div class="chat-header">
           <div class="header-left">
             <button class="menu-btn" id="menuBtn" aria-label="Toggle members panel">☰</button>
-            <div class="title">Free Room Chat</div>
+            <div class="title" id="chatTitle">Free Room Chat</div>
           </div>
           <div class="header-actions">
             <button class="clear-chat-btn" id="clearChatBtn">Clear chat</button>
@@ -397,6 +465,83 @@
         <button class="cancel" id="leaveCancelBtn">Cancel</button>
         <button class="confirm" id="leaveConfirmBtn">Leave room</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ADD ROOM -->
+  <div class="modal-overlay" id="addRoomModal">
+    <div class="modal-box">
+      <h2>Add a room</h2>
+      <p>Join or start another room — your current room stays connected in the background.</p>
+      <div class="field">
+        <label for="addRoomInput">Room code</label>
+        <input type="text" id="addRoomInput" placeholder="Ram123" maxlength="30">
+      </div>
+      <div class="status-line" id="addRoomStatus"></div>
+      <div class="modal-actions">
+        <button class="cancel" id="addRoomCancelBtn">Cancel</button>
+        <button class="confirm" id="addRoomSubmitBtn" style="border-color:var(--accent);color:var(--accent)">Add room</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDIT ROOM NAME -->
+  <div class="modal-overlay" id="editNameModal">
+    <div class="modal-box">
+      <h2>Edit room name</h2>
+      <p>This label only changes what you see in your own sidebar — it does not change the actual room code others use to join.</p>
+      <div class="field">
+        <input type="text" id="editNameInput" maxlength="30">
+      </div>
+      <div class="modal-actions">
+        <button class="cancel" id="editNameCancelBtn">Cancel</button>
+        <button class="confirm" id="editNameSaveBtn" style="border-color:var(--accent);color:var(--accent)">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SHOW ROOM KEY -->
+  <div class="modal-overlay" id="showKeyModal">
+    <div class="modal-box">
+      <h2>Room key</h2>
+      <p>Share this exact code with others so they can join this same room.</p>
+      <div class="field">
+        <input type="text" id="showKeyInput" readonly>
+      </div>
+      <div class="modal-actions">
+        <button class="cancel" id="showKeyCloseBtn">Close</button>
+        <button class="confirm" id="showKeyCopyBtn" style="border-color:var(--accent);color:var(--accent)">Copy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GENERIC CONFIRM (switch / delete) -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal-box">
+      <h2 id="confirmTitle">Are you sure?</h2>
+      <p id="confirmText"></p>
+      <div class="modal-actions">
+        <button class="cancel" id="confirmCancelBtn">Cancel</button>
+        <button class="confirm" id="confirmOkBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROOM OPTIONS POPUP (three-dot menu) -->
+  <div class="room-popup" id="roomPopup">
+    <button data-action="switch">⇄ Switch to room</button>
+    <button data-action="edit">✎ Edit name</button>
+    <button data-action="key">🔑 Show room key</button>
+    <button data-action="delete" class="danger">✕ Delete room</button>
+  </div>
+
+  <!-- ROOM SWITCH RIPPLE TRANSITION -->
+  <div class="switch-overlay" id="switchOverlay">
+    <div class="ripple-wrap">
+      <span class="ripple-bubble"></span>
+      <span class="ripple-bubble" style="animation-delay:.4s"></span>
+      <span class="ripple-bubble" style="animation-delay:.8s"></span>
+      <div class="ripple-label" id="switchOverlayLabel">Room</div>
     </div>
   </div>
 
@@ -478,7 +623,6 @@
   const roomInput = document.getElementById('roomInput');
   const connectBtn = document.getElementById('connectBtn');
   const statusLine = document.getElementById('statusLine');
-  const roomCodeLabel = document.getElementById('roomCodeLabel');
   const membersList = document.getElementById('membersList');
   const leftList = document.getElementById('leftList');
   const onlineCount = document.getElementById('onlineCount');
@@ -508,6 +652,38 @@
   });
   sidebarBackdrop.addEventListener('click', closeSidebar);
   window.addEventListener('resize', () => { if (window.innerWidth > 680) closeSidebar(); });
+
+  // ---- Multi-room DOM refs ----
+  const chatTitle = document.getElementById('chatTitle');
+  const addRoomBtn = document.getElementById('addRoomBtn');
+  const roomsListEl = document.getElementById('roomsList');
+  const addRoomModal = document.getElementById('addRoomModal');
+  const addRoomInput = document.getElementById('addRoomInput');
+  const addRoomStatus = document.getElementById('addRoomStatus');
+  const addRoomCancelBtn = document.getElementById('addRoomCancelBtn');
+  const addRoomSubmitBtn = document.getElementById('addRoomSubmitBtn');
+  const editNameModal = document.getElementById('editNameModal');
+  const editNameInput = document.getElementById('editNameInput');
+  const editNameCancelBtn = document.getElementById('editNameCancelBtn');
+  const editNameSaveBtn = document.getElementById('editNameSaveBtn');
+  const showKeyModal = document.getElementById('showKeyModal');
+  const showKeyInput = document.getElementById('showKeyInput');
+  const showKeyCloseBtn = document.getElementById('showKeyCloseBtn');
+  const showKeyCopyBtn = document.getElementById('showKeyCopyBtn');
+  const confirmModal = document.getElementById('confirmModal');
+  const confirmTitle = document.getElementById('confirmTitle');
+  const confirmText = document.getElementById('confirmText');
+  const confirmCancelBtn = document.getElementById('confirmCancelBtn');
+  const confirmOkBtn = document.getElementById('confirmOkBtn');
+  const roomPopup = document.getElementById('roomPopup');
+  const switchOverlay = document.getElementById('switchOverlay');
+  const switchOverlayLabel = document.getElementById('switchOverlayLabel');
+
+  let rooms = [];          // [{ id: sanitized doc id, code: raw code, label: custom nickname }]
+  let activeRoomId = '';
+  let pendingConfirm = null;
+  let popupRoomId = null;
+  let editingRoomId = null;
 
   function setStatus(text, isError){
     statusLine.textContent = text || '';
@@ -762,48 +938,297 @@
     staleTickTimer = setInterval(renderMembersFromCache, 20000);
   }
 
-  // ---- Join / leave ----
-  function joinRoom(username, roomCode){
-    myUsername = username;
-    myRoomCode = roomCode;
+  // ---- Persistence (survives refresh; only "Leave" clears a room) ----
+  function persistState(){
+    try{
+      localStorage.setItem('frc_username', myUsername);
+      localStorage.setItem('frc_rooms', JSON.stringify(rooms));
+      localStorage.setItem('frc_activeRoom', activeRoomId || '');
+    } catch(e){}
+  }
+  function loadPersistedState(){
+    try{ myUsername = localStorage.getItem('frc_username') || ''; } catch(e){ myUsername = ''; }
+    try{ rooms = JSON.parse(localStorage.getItem('frc_rooms') || '[]'); } catch(e){ rooms = []; }
+    try{ activeRoomId = localStorage.getItem('frc_activeRoom') || ''; } catch(e){ activeRoomId = ''; }
+  }
+  function roomLabel(room){ return (room.label && room.label.trim()) || room.code; }
+
+  // Same username already active (online) in this room, under someone else's device? -> block join.
+  async function isUsernameTaken(mRef, username, myId){
+    const snap = await mRef.get();
+    let taken = false;
+    snap.forEach((doc) => {
+      if (doc.id === myId) return;
+      const d = doc.data();
+      if (d && d.online && d.username === username) taken = true;
+    });
+    return taken;
+  }
+
+  function teardownCurrentRoom(){
+    if (membersRef && myClientId){
+      membersRef.doc(myClientId).set({ online: false, lastSeen: FieldValue.serverTimestamp() }, { merge: true }).catch(() => {});
+    }
+    if (typingRef && myClientId){
+      typingRef.doc(myClientId).delete().catch(() => {});
+    }
+    cleanupListeners();
+  }
+
+  function resetRoomUIState(){
+    messagesEl.innerHTML = '';
+    messageEls.clear();
+    messageReactionEls.clear();
+    Object.keys(membersCache).forEach((k) => delete membersCache[k]);
+    typingUsers.clear();
+    firstMembersSnapshot = true;
+    cancelReply();
+  }
+
+  // Connects this browser tab to a room, tearing down any previous
+  // room's subscriptions first. Throws on a bad code or a taken username.
+  async function connectToRoom(username, rawRoomCode){
+    const roomId = sanitizeRoomId(rawRoomCode);
+    if (roomId === 'room-') throw new Error('Please enter a valid room code.');
+
+    const rRef = db.collection('rooms').doc(roomId);
+    const mRef = rRef.collection('members');
+
     myClientId = getClientId();
-    const roomId = sanitizeRoomId(roomCode);
-    if (roomId === 'room-'){ setStatus('Please enter a valid room code.', true); return; }
+    const taken = await isUsernameTaken(mRef, username, myClientId);
+    if (taken) throw new Error('That username is already taken in this room — pick another.');
 
-    setStatus('Connecting...');
-    connectBtn.disabled = true;
+    if (roomRef) teardownCurrentRoom();
+    resetRoomUIState();
 
-    roomRef = db.collection('rooms').doc(roomId);
-    messagesRef = roomRef.collection('messages');
-    membersRef = roomRef.collection('members');
-    typingRef = roomRef.collection('typing');
+    myUsername = username;
+    myRoomCode = rawRoomCode;
+    hasLeft = false;
+    roomRef = rRef;
+    messagesRef = rRef.collection('messages');
+    membersRef = mRef;
+    typingRef = rRef.collection('typing');
 
-    membersRef.doc(myClientId).set({
+    await membersRef.doc(myClientId).set({
       username: myUsername,
       online: true,
       joinedAt: FieldValue.serverTimestamp(),
       lastSeen: FieldValue.serverTimestamp()
-    }, { merge: true }).then(() => {
-      showChatScreen();
-      subscribeMessages();
-      subscribeMembers();
-      subscribeTyping();
-      startHeartbeat();
-      appendSystemLocal('Connected to room "' + myRoomCode + '"');
-    }).catch((err) => {
-      console.error(err);
-      setStatus('Connection error: ' + err.message, true);
-      connectBtn.disabled = false;
-    });
+    }, { merge: true });
+
+    subscribeMessages();
+    subscribeMembers();
+    subscribeTyping();
+    startHeartbeat();
+    return roomId;
   }
 
   function showChatScreen(){
     joinWrap.style.display = 'none';
     appScreen.classList.add('active');
-    roomCodeLabel.textContent = myRoomCode;
     messageInput.disabled = false;
     sendBtn.disabled = false;
     messageInput.focus();
+  }
+
+  function setActiveRoomDisplay(room){ chatTitle.textContent = roomLabel(room); }
+  function sleep(ms){ return new Promise((res) => setTimeout(res, ms)); }
+
+  function showRippleTransition(label){
+    switchOverlayLabel.textContent = label;
+    switchOverlay.classList.add('active');
+  }
+  function hideRippleTransition(){ switchOverlay.classList.remove('active'); }
+
+  // ---- Rooms list rendering ----
+  function renderRoomsList(){
+    roomsListEl.innerHTML = '';
+    rooms.forEach((room) => {
+      const item = document.createElement('div');
+      item.className = 'room-item' + (room.id === activeRoomId ? ' active' : '');
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'room-name';
+      nameEl.textContent = roomLabel(room);
+      item.appendChild(nameEl);
+
+      const switchBtn = document.createElement('button');
+      switchBtn.className = 'room-switch-btn';
+      switchBtn.title = 'Switch to this room';
+      switchBtn.textContent = '⇄';
+      switchBtn.addEventListener('click', (e) => { e.stopPropagation(); requestSwitch(room); });
+      item.appendChild(switchBtn);
+
+      const moreBtn = document.createElement('button');
+      moreBtn.className = 'room-more-btn';
+      moreBtn.title = 'Room options';
+      moreBtn.textContent = '⋮';
+      moreBtn.addEventListener('click', (e) => { e.stopPropagation(); openRoomPopup(room, moreBtn); });
+      item.appendChild(moreBtn);
+
+      item.addEventListener('click', () => requestSwitch(room));
+      roomsListEl.appendChild(item);
+    });
+  }
+
+  // ---- Generic confirm modal (used by switch + delete) ----
+  function askConfirm(title, text, confirmLabel, onConfirm){
+    confirmTitle.textContent = title;
+    confirmText.textContent = text;
+    confirmOkBtn.textContent = confirmLabel || 'Confirm';
+    pendingConfirm = onConfirm;
+    confirmModal.classList.add('active');
+  }
+  confirmCancelBtn.addEventListener('click', () => { confirmModal.classList.remove('active'); pendingConfirm = null; });
+  confirmOkBtn.addEventListener('click', () => {
+    const fn = pendingConfirm;
+    confirmModal.classList.remove('active');
+    pendingConfirm = null;
+    if (fn) fn();
+  });
+
+  // ---- Room switching ----
+  function requestSwitch(room){
+    closeRoomPopup();
+    if (room.id === activeRoomId) return;
+    askConfirm('Switch room?', 'Switch to "' + roomLabel(room) + '"? Your current room stays saved in the list.', 'Switch', () => switchToRoom(room));
+  }
+
+  async function switchToRoom(room){
+    showRippleTransition(roomLabel(room));
+    try {
+      await Promise.all([connectToRoom(myUsername, room.code), sleep(650)]);
+      activeRoomId = room.id;
+      persistState();
+      renderRoomsList();
+      setActiveRoomDisplay(room);
+      appendSystemLocal('Switched to room "' + roomLabel(room) + '"');
+    } catch (err){
+      console.error(err);
+      alert('Could not switch rooms: ' + err.message);
+    } finally {
+      hideRippleTransition();
+    }
+  }
+
+  // ---- Add room ----
+  function openAddRoomModal(){
+    addRoomInput.value = '';
+    addRoomStatus.textContent = '';
+    addRoomStatus.classList.remove('error');
+    addRoomModal.classList.add('active');
+    setTimeout(() => addRoomInput.focus(), 50);
+  }
+  function closeAddRoomModal(){ addRoomModal.classList.remove('active'); }
+
+  async function submitAddRoom(){
+    const code = addRoomInput.value.trim();
+    if (!code){ addRoomStatus.textContent = 'Please enter a room code.'; addRoomStatus.classList.add('error'); return; }
+    const roomId = sanitizeRoomId(code);
+    const existing = rooms.find((r) => r.id === roomId);
+    if (existing){ closeAddRoomModal(); requestSwitch(existing); return; }
+
+    addRoomSubmitBtn.disabled = true;
+    showRippleTransition(code);
+    try {
+      await Promise.all([connectToRoom(myUsername, code), sleep(650)]);
+      const room = { id: roomId, code: code, label: '' };
+      rooms.push(room);
+      activeRoomId = roomId;
+      persistState();
+      renderRoomsList();
+      setActiveRoomDisplay(room);
+      appendSystemLocal('Connected to room "' + roomLabel(room) + '"');
+      closeAddRoomModal();
+    } catch (err){
+      addRoomStatus.textContent = err.message;
+      addRoomStatus.classList.add('error');
+    } finally {
+      addRoomSubmitBtn.disabled = false;
+      hideRippleTransition();
+    }
+  }
+  addRoomBtn.addEventListener('click', openAddRoomModal);
+  addRoomCancelBtn.addEventListener('click', closeAddRoomModal);
+  addRoomSubmitBtn.addEventListener('click', submitAddRoom);
+  addRoomInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitAddRoom(); });
+
+  // ---- Room options popup (three-dot menu) ----
+  function openRoomPopup(room, anchorBtn){
+    popupRoomId = room.id;
+    const rect = anchorBtn.getBoundingClientRect();
+    roomPopup.style.top = (rect.bottom + 6) + 'px';
+    roomPopup.style.left = Math.max(8, rect.right - 170) + 'px';
+    roomPopup.classList.add('active');
+  }
+  function closeRoomPopup(){ roomPopup.classList.remove('active'); popupRoomId = null; }
+  document.addEventListener('click', (e) => {
+    if (roomPopup.classList.contains('active') && !roomPopup.contains(e.target)){ closeRoomPopup(); }
+  });
+  roomPopup.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn || !popupRoomId) return;
+    const room = rooms.find((r) => r.id === popupRoomId);
+    const action = btn.dataset.action;
+    closeRoomPopup();
+    if (!room) return;
+    if (action === 'switch') requestSwitch(room);
+    else if (action === 'edit') openEditNameModal(room);
+    else if (action === 'key') openShowKeyModal(room);
+    else if (action === 'delete') requestDeleteRoom(room);
+  });
+
+  // ---- Edit room name (local nickname only) ----
+  function openEditNameModal(room){
+    editingRoomId = room.id;
+    editNameInput.value = roomLabel(room);
+    editNameModal.classList.add('active');
+    setTimeout(() => editNameInput.focus(), 50);
+  }
+  function closeEditNameModal(){ editNameModal.classList.remove('active'); editingRoomId = null; }
+  editNameCancelBtn.addEventListener('click', closeEditNameModal);
+  editNameSaveBtn.addEventListener('click', () => {
+    const room = rooms.find((r) => r.id === editingRoomId);
+    if (room){
+      room.label = editNameInput.value.trim();
+      persistState();
+      renderRoomsList();
+      if (room.id === activeRoomId) setActiveRoomDisplay(room);
+    }
+    closeEditNameModal();
+  });
+  editNameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') editNameSaveBtn.click(); });
+
+  // ---- Show room key (the real code others need, since the label above can differ) ----
+  function openShowKeyModal(room){
+    showKeyInput.value = room.code;
+    showKeyModal.classList.add('active');
+  }
+  showKeyCloseBtn.addEventListener('click', () => showKeyModal.classList.remove('active'));
+  showKeyCopyBtn.addEventListener('click', () => {
+    showKeyInput.select();
+    try { navigator.clipboard && navigator.clipboard.writeText(showKeyInput.value); } catch(e){}
+    showKeyCopyBtn.textContent = 'Copied!';
+    setTimeout(() => { showKeyCopyBtn.textContent = 'Copy'; }, 1400);
+  });
+
+  // ---- Delete room (removes from this device's list; doesn't wipe the room's data) ----
+  function requestDeleteRoom(room){
+    askConfirm('Delete room?', 'Remove "' + roomLabel(room) + '" from your room list on this device? You can rejoin later with the same room code.', 'Delete', () => performDeleteRoom(room));
+  }
+  async function performDeleteRoom(room){
+    const wasActive = room.id === activeRoomId;
+    if (wasActive) teardownCurrentRoom();
+    rooms = rooms.filter((r) => r.id !== room.id);
+    if (wasActive){
+      activeRoomId = '';
+      persistState();
+      if (rooms.length) await switchToRoom(rooms[0]);
+      else location.reload();
+    } else {
+      persistState();
+      renderRoomsList();
+    }
   }
 
   function sendMessage(){
@@ -842,13 +1267,39 @@
   window.addEventListener('pagehide', notifyLeaving);
   window.addEventListener('beforeunload', notifyLeaving);
 
-  function leaveRoom(){ notifyLeaving(); cleanupListeners(); location.reload(); }
+  // Leaving is the only action that drops this room from the device's
+  // saved room list — refreshing the page alone always reconnects.
+  function leaveRoom(){
+    notifyLeaving();
+    cleanupListeners();
+    rooms = rooms.filter((r) => r.id !== activeRoomId);
+    activeRoomId = rooms.length ? rooms[0].id : '';
+    persistState();
+    location.reload();
+  }
 
-  connectBtn.addEventListener('click', () => {
+  connectBtn.addEventListener('click', async () => {
     const username = usernameInput.value.trim();
     const room = roomInput.value.trim();
     if (!username || !room){ setStatus('Please enter both a username and a room code.', true); return; }
-    joinRoom(username, room);
+    setStatus('Connecting...');
+    connectBtn.disabled = true;
+    try {
+      const roomId = await connectToRoom(username, room);
+      const roomObj = { id: roomId, code: room, label: '' };
+      rooms = [roomObj];
+      activeRoomId = roomId;
+      persistState();
+      showChatScreen();
+      renderRoomsList();
+      setActiveRoomDisplay(roomObj);
+      appendSystemLocal('Connected to room "' + roomLabel(roomObj) + '"');
+    } catch (err){
+      console.error(err);
+      setStatus(err.message, true);
+    } finally {
+      connectBtn.disabled = false;
+    }
   });
   [usernameInput, roomInput].forEach(el => {
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter') connectBtn.click(); });
@@ -889,6 +1340,29 @@
       console.error('clear chat failed:', err);
     }
   });
+
+  // ---- Auto-reconnect on refresh ----
+  // A refresh never leaves a room — only the Leave button does that.
+  // If a saved session exists, skip the join screen and reconnect directly.
+  (async function initSession(){
+    loadPersistedState();
+    const activeRoom = rooms.find((r) => r.id === activeRoomId);
+    if (myUsername && activeRoom){
+      showChatScreen();
+      renderRoomsList();
+      setActiveRoomDisplay(activeRoom);
+      try {
+        await connectToRoom(myUsername, activeRoom.code);
+        appendSystemLocal('Reconnected to room "' + roomLabel(activeRoom) + '"');
+      } catch (err){
+        console.error(err);
+        appendSystemLocal('Could not reconnect: ' + err.message);
+      }
+    } else if (!myUsername && rooms.length){
+      // stale/corrupt saved state — reset it
+      rooms = []; activeRoomId = ''; persistState();
+    }
+  })();
 })();
 </script>
 </body>

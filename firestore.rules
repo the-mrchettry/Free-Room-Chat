@@ -12,25 +12,30 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
     match /rooms/{roomId} {
-
       match /messages/{messageId} {
         allow read: if true;
-        allow create: if request.resource.data.keys().hasAll(['sender', 'senderId', 'text', 'timestamp'])
+        allow create: if request.resource.data.keys().hasAll(['sender','senderId','text','timestamp'])
                       && request.resource.data.text is string
                       && request.resource.data.text.size() > 0
-                      && request.resource.data.text.size() < 2000;
+                      && request.resource.data.text.size() < 2000
+                      && request.resource.data.sender is string
+                      && request.resource.data.sender.size() < 40;
         allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']);
         allow delete: if true;
       }
-
       match /members/{memberId} {
-        allow read, write: if true;
+        allow read: if true;
+        allow write: if request.resource.data.keys().hasOnly(['username','online','joinedAt','lastSeen'])
+                     && request.resource.data.username is string
+                     && request.resource.data.username.size() > 0 && request.resource.data.username.size() < 30
+                     && request.resource.data.online is bool;
       }
-
       match /typing/{typerId} {
-        allow read, write: if true;
+        allow read: if true;
+        allow write: if request.resource.data.keys().hasOnly(['username','ts'])
+                     && request.resource.data.username is string
+                     && request.resource.data.username.size() < 30;
       }
     }
   }
