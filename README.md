@@ -11,59 +11,69 @@ A room-based chat app. Anyone who enters the same room code joins the same conve
 - Members list with online/left tracking
 - Clear chat for everyone in the room
 - Leave-room confirmation
+- Fully responsive — old phones, iPads/tablets, laptops, desktops, and TVs (sidebar becomes a slide-over panel on small screens, content is centered with a max width on very large ones)
 
-## Setup (Firebase)
+## Project structure
 
-1. Create a free project at the [Firebase console](https://console.firebase.google.com) → **Build → Firestore Database → Create database** (production mode).
-2. **Project settings → General → Your apps** → register a Web app to get your config keys.
-3. Paste those keys into `firebase-config.js`, replacing the placeholder values.
-4. **Firestore Database → Rules** → paste in the contents of `firestore.rules`, then **Publish**.
-
-No further setup needed — no build step, no server.
-
-## Running locally
-
-Just open `index.html` in a browser, or serve it with any static file server:
-
-```bash
-npx serve .
+```
+index.html
+firebase-config.js
+firestore.rules
+favicon/          ← put favicon-96x96.png, favicon.svg, favicon.ico, apple-touch-icon.png, site.webmanifest here
+images/           ← put Freeroomchat_logo.png here (used in the join screen + sidebar)
 ```
 
-## Deploying with GitHub Pages
+`index.html` already references `favicon/...` and `images/Freeroomchat_logo.png` as relative
+paths — just make sure those two folders exist alongside `index.html` with the matching filenames.
 
-1. Create a new GitHub repository and push this folder to it:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git branch -M main
-   git remote add origin https://github.com/<your-username>/<repo-name>.git
-   git push -u origin main
-   ```
-2. On GitHub, go to **Settings → Pages**.
-3. Under **Source**, select the `main` branch and `/ (root)` folder, then **Save**.
-4. Your site will be live at `https://<your-username>.github.io/<repo-name>/` within a few minutes.
+## 1. Create a free Firebase project
 
-## Using a custom domain
+1. Go to https://console.firebase.google.com → **Add project** (free, no credit card needed for Spark plan).
+2. Once created, go to **Build → Firestore Database → Create database** → start in **production mode** (any region close to you) — click through to create it.
+3. In the left sidebar, go to **Project settings** (⚙ icon) → **General** tab → scroll to **Your apps** → click the **Web** icon (`</>`) → register an app (no need for Firebase Hosting here).
+4. Firebase will show you a `firebaseConfig` object with your keys.
 
-1. Buy/own a domain (e.g. from Namecheap, Google Domains, etc.).
-2. In your domain's DNS settings, add either:
-   - A **CNAME record** pointing your subdomain (e.g. `chat.yourdomain.com`) to `<your-username>.github.io`, or
-   - Four **A records** pointing your root domain to GitHub Pages' IPs:
-     ```
-     185.199.108.153
-     185.199.109.153
-     185.199.110.153
-     185.199.111.153
-     ```
-3. In the repo, create a file named `CNAME` (no extension) at the root containing just your domain, e.g.:
-   ```
-   chat.yourdomain.com
-   ```
-4. Back on GitHub **Settings → Pages**, enter the same custom domain and enable **Enforce HTTPS** once it's verified.
+## 2. Add your keys
 
-## Notes on scale
+Open `firebase-config.js` and replace the placeholder values with the ones from step 1:
 
-This app runs on Firebase's free Spark plan: **50,000 reads / 20,000 writes / 20,000 deletes per day**, reset daily — plenty for casual or small-group use. To stay well inside that quota, the app only loads the last 200 messages per room, throttles typing-status writes to about once every 1.5 seconds per person, and sends an "online" heartbeat only once every 25 seconds per active member. If a room grows much heavier than that, consider upgrading to Firebase's pay-as-you-go Blaze plan (still free up to the same daily quota, billed only beyond it).
+```js
+const firebaseConfig = {
+  apiKey: "...",
+  authDomain: "...",
+  projectId: "...",
+  storageBucket: "...",
+  messagingSenderId: "...",
+  appId: "..."
+};
+```
 
-Room codes act as the access key — anyone who knows a room code can read/write that room, so avoid guessable codes for private chats.
+## 3. Add the security rules
+
+Go to **Firestore Database → Rules** in the Firebase console, and paste in the
+contents of `firestore.rules` from this project, then click **Publish**.
+
+(These rules let anyone who knows a room code read/write that room — same trust
+model as the original app, where the room code itself is the "access key". Don't
+use guessable room codes for private chats.)
+
+## 4. Host it (GitHub Pages)
+
+1. Push `index.html`, `firebase-config.js` (with your real keys filled in), and
+   `firestore.rules` (optional, just for reference — it's not used at runtime)
+   to a GitHub repo.
+2. Repo → **Settings → Pages** → set source to your default branch, root folder.
+3. Your chat will be live at `https://<username>.github.io/<repo>/`.
+
+That's it — no server, no build step, everything runs client-side against Firestore.
+
+## Notes on the free tier
+
+Firestore's free Spark plan gives **50,000 reads / 20,000 writes / 20,000 deletes
+per day** — plenty for casual/small-group use. If a room gets heavy, ongoing costs
+scale but the free quota resets daily. Things kept deliberately light to stay
+inside it:
+
+- Only the last 200 messages per room load into the live view.
+- Typing status writes are throttled to ~1 per 1.5s per person, and auto-expire.
+- "Online" heartbeat only writes once every 25s per active member.
