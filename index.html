@@ -7,7 +7,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+
+<!-- Firebase (Firestore only — no auth, no build step needed) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+
 <style>
   :root{
     --bg:#0a0a0b;
@@ -250,7 +255,7 @@
         <div class="brand-name">Free Room Chat</div>
       </div>
       <h1>Enter a room to<br>start talking</h1>
-      <p class="sub">Anyone who enters the same room code joins the same live conversation. No account, no database.</p>
+      <p class="sub">Anyone who enters the same room code joins the same conversation — messages are saved, so history is there even after a refresh or on a new device.</p>
 
       <div class="field">
         <label for="usernameInput">Username</label>
@@ -305,7 +310,7 @@
   <div class="modal-overlay" id="clearModal">
     <div class="modal-box">
       <h2>Clear chat?</h2>
-      <p>This clears the chat history for everyone currently in the room. It can't be undone.</p>
+      <p>This permanently deletes the saved chat history for this room, for everyone. It can't be undone.</p>
       <div class="modal-actions">
         <button class="cancel" id="clearCancelBtn">Cancel</button>
         <button class="confirm" id="clearConfirmBtn">Clear chat</button>
@@ -317,7 +322,7 @@
   <div class="modal-overlay" id="leaveModal">
     <div class="modal-box">
       <h2>Leave room?</h2>
-      <p>You'll disconnect from this room. You can rejoin anytime with the same room code.</p>
+      <p>You'll disconnect from this room. You can rejoin anytime with the same room code — your chat history will still be there.</p>
       <div class="modal-actions">
         <button class="cancel" id="leaveCancelBtn">Cancel</button>
         <button class="confirm" id="leaveConfirmBtn">Leave room</button>
@@ -327,6 +332,24 @@
 
 <script>
 (function(){
+  // ───────────────────────────────────────────────────────────
+  // Backend: Firebase Firestore. Every message, member, and
+  // typing-status doc lives under rooms/{roomId}/... in Firestore,
+  // so the room's state survives refreshes, tab closes, and works
+  // the same from any device — there is no "host" anymore.
+  // ───────────────────────────────────────────────────────────
+
+  if (!window.firebase || !window.firebaseConfig || firebaseConfig.apiKey === 'YOUR_API_KEY'){
+    document.addEventListener('DOMContentLoaded', () => {
+      const s = document.getElementById('statusLine');
+      if (s){ s.textContent = 'Firebase is not configured yet — edit firebase-config.js with your project keys.'; s.classList.add('error'); }
+    });
+  }
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+  const FieldValue = firebase.firestore.FieldValue;
+
   // Muted, legible accent palette for distinguishing users
   const PALETTE = ['#d1a35c','#c98a94','#8fae8b','#7f9cc4','#a08fc4','#b3745a'];
   function colorFor(id){
@@ -335,55 +358,37 @@
     return PALETTE[hash % PALETTE.length];
   }
 
+  const TYPING_TTL_MS = 4000;
+  const OFFLINE_AFTER_MS = 60000;
+  const HEARTBEAT_MS = 25000;
+  const TYPING_WRITE_THROTTLE_MS = 1500;
+  const TYPING_IDLE_CLEAR_MS = 2500;
+
   // ---- State ----
-  let peer = null;
-  let isHost = false;
-  let hostConnection = null;
-  const clientConnections = new Map();
-  let myUsername = '';
-  let myRoomCode = '';
-  let myClientId = '';
+  let roomRef = null, messagesRef = null, membersRef = null, typingRef = null;
+  let unsubMessages = null, unsubMembers = null, unsubTyping = null;
+  let heartbeatTimer = null, staleTickTimer = null, typingIdleTimer = null;
+  let myUsername = '', myRoomCode = '', myClientId = '';
   let hasLeft = false;
+  let firstMembersSnapshot = true;
+  const membersCache = {}; // id -> { username, online, lastSeen(ms) }
+  const messageEls = new Map();          // msgId -> row element
+  const messageReactionEls = new Map();  // msgId -> reactions element
+  let replyTarget = null;                // { sender, text } | null
+  let typingLastSent = 0;
+  const typingUsers = new Map(); // clientId -> username (currently typing, from Firestore)
 
-  let hostMembers = {};
-  let hostLeft = {};
-
-  // ---- Reactions & replies ----
-  const messageReactions = new Map();   // msgId -> count
-  const messageReactionEls = new Map(); // msgId -> DOM element
-  let replyTarget = null;               // { sender, text } | null
-  function genMsgId(){ return myClientId + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
-
-  // ---- Typing indicator ----
-  const typingUsers = new Map(); // senderId -> username
-  const typingTimers = new Map(); // senderId -> timeout id
-
-  function renderTyping(){
-    typingIndicator.innerHTML = '';
-    const names = Array.from(typingUsers.values());
-    if (names.length === 0) return;
-    const label = names.length === 1 ? (names[0] + ' is typing') : (names.join(', ') + ' are typing');
-    const nameSpan = document.createElement('span');
-    nameSpan.className = 'typing-name';
-    nameSpan.textContent = label;
-    const dots = document.createElement('span');
-    dots.className = 'typing-dots';
-    dots.innerHTML = '<span></span><span></span><span></span>';
-    typingIndicator.appendChild(nameSpan);
-    typingIndicator.appendChild(dots);
+  function getClientId(){
+    let id;
+    try { id = localStorage.getItem('frc_clientId'); } catch(e){}
+    if (!id){
+      id = 'u-' + Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+      try { localStorage.setItem('frc_clientId', id); } catch(e){}
+    }
+    return id;
   }
-
-  function setTyping(senderId, username){
-    if (senderId === myClientId) return;
-    typingUsers.set(senderId, username);
-    renderTyping();
-    if (typingTimers.has(senderId)) clearTimeout(typingTimers.get(senderId));
-    typingTimers.set(senderId, setTimeout(() => {
-      typingUsers.delete(senderId);
-      typingTimers.delete(senderId);
-      renderTyping();
-    }, 3000));
-  }
+  function sanitizeRoomId(str){ return 'room-' + str.trim().toLowerCase().replace(/[^a-z0-9-_]/g, ''); }
+  function genLocalId(){ return 'sys-' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
   // ---- DOM ----
   const joinWrap = document.getElementById('joinWrap');
@@ -416,12 +421,10 @@
     statusLine.textContent = text || '';
     statusLine.classList.toggle('error', !!isError);
   }
-  function sanitizeForPeerId(str){ return 'room-' + str.trim().toLowerCase().replace(/[^a-z0-9-_]/g, ''); }
-  function randomId(){ return 'p-' + Math.random().toString(36).slice(2, 10); }
 
   // ---- Rendering ----
-  function formatTime(){
-    const d = new Date();
+  function formatTime(date){
+    const d = date || new Date();
     let h = d.getHours();
     const m = d.getMinutes().toString().padStart(2, '0');
     const ampm = h >= 12 ? 'PM' : 'AM';
@@ -429,73 +432,79 @@
     return h + ':' + m + ' ' + ampm;
   }
 
-  function appendMessage(kind, sender, senderId, text, msgId, replyTo){
+  function appendSystemLocal(text){
     const row = document.createElement('div');
-    row.className = 'msg-row ' + kind;
-    if (kind === 'system'){
-      const bubble = document.createElement('div');
-      bubble.className = 'msg-bubble';
-      bubble.textContent = text;
-      row.appendChild(bubble);
-    } else {
-      if (replyTo){
-        const quote = document.createElement('div');
-        quote.className = 'reply-quote';
-        const b = document.createElement('b');
-        b.textContent = replyTo.sender + ': ';
-        quote.appendChild(b);
-        quote.appendChild(document.createTextNode(replyTo.text));
-        row.appendChild(quote);
-      }
-
-      const meta = document.createElement('div');
-      meta.className = 'msg-meta';
-      const senderEl = document.createElement('span');
-      senderEl.className = 'msg-sender';
-      senderEl.textContent = sender;
-      const timeEl = document.createElement('span');
-      timeEl.className = 'msg-time';
-      timeEl.textContent = formatTime();
-      meta.appendChild(senderEl);
-      meta.appendChild(timeEl);
-
-      const bubble = document.createElement('div');
-      bubble.className = 'msg-bubble';
-      bubble.textContent = text;
-
-      row.appendChild(meta);
-      row.appendChild(bubble);
-
-      if (msgId){
-        const reactionsEl = document.createElement('div');
-        reactionsEl.className = 'msg-reactions';
-        reactionsEl.style.display = 'none';
-        row.appendChild(reactionsEl);
-        messageReactionEls.set(msgId, reactionsEl);
-      }
-
-      if (kind === 'other' && msgId){
-        const actions = document.createElement('div');
-        actions.className = 'msg-actions';
-        const reactBtn = document.createElement('button');
-        reactBtn.className = 'msg-action-btn';
-        reactBtn.textContent = '♡ React';
-        reactBtn.addEventListener('click', () => reactToMessage(msgId));
-        const replyBtn = document.createElement('button');
-        replyBtn.className = 'msg-action-btn';
-        replyBtn.textContent = '↩ Reply';
-        replyBtn.addEventListener('click', () => startReply(sender, text));
-        actions.appendChild(reactBtn);
-        actions.appendChild(replyBtn);
-        row.appendChild(actions);
-      }
-    }
+    row.className = 'msg-row system';
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    bubble.textContent = text;
+    row.appendChild(bubble);
     messagesEl.appendChild(row);
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
-  function updateReactionDisplay(msgId){
-    const count = messageReactions.get(msgId) || 0;
+  function renderMessage(msgId, data){
+    const kind = data.senderId === myClientId ? 'me' : 'other';
+    const row = document.createElement('div');
+    row.className = 'msg-row ' + kind;
+
+    if (data.replyTo){
+      const quote = document.createElement('div');
+      quote.className = 'reply-quote';
+      const b = document.createElement('b');
+      b.textContent = data.replyTo.sender + ': ';
+      quote.appendChild(b);
+      quote.appendChild(document.createTextNode(data.replyTo.text));
+      row.appendChild(quote);
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta';
+    const senderEl = document.createElement('span');
+    senderEl.className = 'msg-sender';
+    senderEl.textContent = kind === 'me' ? 'You' : data.sender;
+    const timeEl = document.createElement('span');
+    timeEl.className = 'msg-time';
+    timeEl.textContent = formatTime(data.timestamp && data.timestamp.toDate ? data.timestamp.toDate() : new Date());
+    meta.appendChild(senderEl);
+    meta.appendChild(timeEl);
+
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    bubble.textContent = data.text;
+
+    row.appendChild(meta);
+    row.appendChild(bubble);
+
+    const reactionsEl = document.createElement('div');
+    reactionsEl.className = 'msg-reactions';
+    reactionsEl.style.display = 'none';
+    row.appendChild(reactionsEl);
+    messageReactionEls.set(msgId, reactionsEl);
+
+    if (kind === 'other'){
+      const actions = document.createElement('div');
+      actions.className = 'msg-actions';
+      const reactBtn = document.createElement('button');
+      reactBtn.className = 'msg-action-btn';
+      reactBtn.textContent = '♡ React';
+      reactBtn.addEventListener('click', () => reactToMessage(msgId));
+      const replyBtn = document.createElement('button');
+      replyBtn.className = 'msg-action-btn';
+      replyBtn.textContent = '↩ Reply';
+      replyBtn.addEventListener('click', () => startReply(data.sender, data.text));
+      actions.appendChild(reactBtn);
+      actions.appendChild(replyBtn);
+      row.appendChild(actions);
+    }
+
+    messageEls.set(msgId, row);
+    messagesEl.appendChild(row);
+    updateReactionDisplay(msgId, data.reactions || 0);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function updateReactionDisplay(msgId, count){
     const el = messageReactionEls.get(msgId);
     if (!el) return;
     if (count > 0){ el.style.display = 'block'; el.textContent = '♥ ' + count; }
@@ -503,11 +512,7 @@
   }
 
   function reactToMessage(msgId){
-    messageReactions.set(msgId, (messageReactions.get(msgId) || 0) + 1);
-    updateReactionDisplay(msgId);
-    const payload = { type:'react', msgId };
-    if (isHost){ hostBroadcast(payload); }
-    else if (hostConnection && hostConnection.open){ hostConnection.send(payload); }
+    messagesRef.doc(msgId).update({ reactions: FieldValue.increment(1) }).catch(err => console.error(err));
   }
 
   function startReply(sender, text){
@@ -520,6 +525,16 @@
   function cancelReply(){
     replyTarget = null;
     replyBanner.classList.remove('active');
+  }
+
+  function renderMembersFromCache(){
+    const now = Date.now();
+    const online = {}, left = {};
+    Object.entries(membersCache).forEach(([id, m]) => {
+      const isOnline = m.online && (now - m.lastSeen < OFFLINE_AFTER_MS);
+      if (isOnline) online[id] = m.username; else left[id] = m.username;
+    });
+    renderMembers(online, left);
   }
 
   function renderMembers(members, left){
@@ -557,144 +572,136 @@
     });
   }
 
-  // ---- HOST MODE ----
-  function hostBroadcast(payload, exceptConnId){
-    clientConnections.forEach((info, connId) => {
-      if (connId !== exceptConnId && info.conn.open){ info.conn.send(payload); }
-    });
-  }
-  function hostSyncPresence(){
-    hostBroadcast({ type:'presence', members:hostMembers, left:hostLeft });
-    renderMembers(hostMembers, hostLeft);
-  }
-  function hostAddMember(connId, username){
-    hostMembers[connId] = username;
-    delete hostLeft[connId];
-    hostSyncPresence();
-  }
-  function hostMarkLeft(connId){
-    const name = hostMembers[connId];
-    if (!name) return;
-    delete hostMembers[connId];
-    hostLeft[connId] = name;
-    clientConnections.delete(connId);
-    hostSyncPresence();
-    appendMessage('system', '', '', name + ' left the room');
-    hostBroadcast({ type:'system', text: name + ' left the room' });
+  // ---- Typing indicator (rendering) ----
+  function renderTyping(){
+    typingIndicator.innerHTML = '';
+    const names = Array.from(typingUsers.values());
+    if (names.length === 0) return;
+    const label = names.length === 1 ? (names[0] + ' is typing') : (names.join(', ') + ' are typing');
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'typing-name';
+    nameSpan.textContent = label;
+    const dots = document.createElement('span');
+    dots.className = 'typing-dots';
+    dots.innerHTML = '<span></span><span></span><span></span>';
+    typingIndicator.appendChild(nameSpan);
+    typingIndicator.appendChild(dots);
   }
 
-  function becomeHost(hostPeerId){
-    isHost = true;
-    myClientId = hostPeerId;
-    peer = new Peer(hostPeerId);
+  // ---- Firestore subscriptions ----
+  function subscribeMessages(){
+    unsubMessages = messagesRef.orderBy('timestamp', 'desc').limit(200)
+      .onSnapshot((snapshot) => {
+        const added = [];
+        snapshot.docChanges().forEach((change) => {
+          const id = change.doc.id;
+          const data = change.doc.data();
+          if (change.type === 'added'){
+            if (!messageEls.has(id)) added.push({ id, data });
+          } else if (change.type === 'modified'){
+            updateReactionDisplay(id, data.reactions || 0);
+          } else if (change.type === 'removed'){
+            const el = messageEls.get(id);
+            if (el){ el.remove(); messageEls.delete(id); messageReactionEls.delete(id); }
+          }
+        });
+        added
+          .sort((a, b) => {
+            const ta = a.data.timestamp && a.data.timestamp.toMillis ? a.data.timestamp.toMillis() : 0;
+            const tb = b.data.timestamp && b.data.timestamp.toMillis ? b.data.timestamp.toMillis() : 0;
+            return ta - tb;
+          })
+          .forEach(({ id, data }) => renderMessage(id, data));
+      }, (err) => {
+        console.error('messages listener error:', err);
+        setStatus('Lost connection to chat history: ' + err.message, true);
+      });
+  }
 
-    peer.on('open', () => {
-      hostMembers[myClientId] = myUsername;
-      renderMembers(hostMembers, hostLeft);
-      showChatScreen();
-      appendMessage('system', '', '', 'Room created. Waiting for others to join...');
-    });
+  function subscribeMembers(){
+    unsubMembers = membersRef.onSnapshot((snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        const id = change.doc.id;
+        const d = change.doc.data();
+        const prev = membersCache[id];
 
-    peer.on('connection', (conn) => {
-      conn.on('open', () => { clientConnections.set(conn.peer, { conn, username:null }); });
+        if (!firstMembersSnapshot && id !== myClientId){
+          if (change.type === 'added' && d.online){
+            appendSystemLocal(d.username + ' joined the room');
+          } else if (change.type === 'modified' && prev){
+            if (prev.online && d.online === false) appendSystemLocal(d.username + ' left the room');
+            else if (!prev.online && d.online) appendSystemLocal(d.username + ' rejoined the room');
+          }
+        }
 
-      conn.on('data', (data) => {
-        if (data.type === 'join'){
-          clientConnections.get(conn.peer).username = data.username;
-          hostAddMember(conn.peer, data.username);
-          appendMessage('system', '', '', data.username + ' joined the room');
-          hostBroadcast({ type:'system', text: data.username + ' joined the room' }, conn.peer);
-          conn.send({ type:'presence', members:hostMembers, left:hostLeft });
-        } else if (data.type === 'chat'){
-          appendMessage('other', data.username, conn.peer, data.text, data.msgId, data.replyTo);
-          hostBroadcast({ type:'chat', username:data.username, senderId:conn.peer, text:data.text, msgId:data.msgId, replyTo:data.replyTo }, conn.peer);
-        } else if (data.type === 'leave'){
-          hostMarkLeft(conn.peer);
-        } else if (data.type === 'typing'){
-          setTyping(conn.peer, data.username);
-          hostBroadcast({ type:'typing', username:data.username, senderId:conn.peer }, conn.peer);
-        } else if (data.type === 'react'){
-          messageReactions.set(data.msgId, (messageReactions.get(data.msgId) || 0) + 1);
-          updateReactionDisplay(data.msgId);
-          hostBroadcast({ type:'react', msgId:data.msgId }, conn.peer);
-        } else if (data.type === 'clearChat'){
-          messagesEl.innerHTML = '';
-          hostBroadcast({ type:'clearChat' }, conn.peer);
+        if (change.type === 'removed'){
+          delete membersCache[id];
+        } else {
+          membersCache[id] = {
+            username: d.username,
+            online: !!d.online,
+            lastSeen: d.lastSeen && d.lastSeen.toMillis ? d.lastSeen.toMillis() : Date.now()
+          };
         }
       });
-
-      conn.on('close', () => hostMarkLeft(conn.peer));
-      conn.on('error', () => hostMarkLeft(conn.peer));
-    });
-
-    peer.on('error', (err) => {
-      console.error('Host peer error:', err);
-      setStatus('Connection error: ' + err.type, true);
-    });
+      firstMembersSnapshot = false;
+      renderMembersFromCache();
+    }, (err) => console.error('members listener error:', err));
   }
 
-  function handleClientData(data){
-    if (data.type === 'chat'){ appendMessage('other', data.username, data.senderId, data.text, data.msgId, data.replyTo); }
-    else if (data.type === 'system'){ appendMessage('system', '', '', data.text); }
-    else if (data.type === 'presence'){ renderMembers(data.members, data.left); }
-    else if (data.type === 'typing'){ setTyping(data.senderId, data.username); }
-    else if (data.type === 'react'){
-      messageReactions.set(data.msgId, (messageReactions.get(data.msgId) || 0) + 1);
-      updateReactionDisplay(data.msgId);
-    }
-    else if (data.type === 'clearChat'){ messagesEl.innerHTML = ''; }
-  }
-  function handleHostGone(){
-    appendMessage('system', '', '', 'Disconnected from room (host left).');
-    messageInput.disabled = true;
-    sendBtn.disabled = true;
+  function subscribeTyping(){
+    unsubTyping = typingRef.onSnapshot((snapshot) => {
+      const now = Date.now();
+      typingUsers.clear();
+      snapshot.forEach((doc) => {
+        if (doc.id === myClientId) return;
+        const d = doc.data();
+        const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : now;
+        if (now - ts < TYPING_TTL_MS) typingUsers.set(doc.id, d.username);
+      });
+      renderTyping();
+    }, (err) => console.error('typing listener error:', err));
   }
 
+  function startHeartbeat(){
+    heartbeatTimer = setInterval(() => {
+      membersRef.doc(myClientId).set({ lastSeen: FieldValue.serverTimestamp(), online: true }, { merge: true }).catch(() => {});
+    }, HEARTBEAT_MS);
+    staleTickTimer = setInterval(renderMembersFromCache, 20000);
+  }
+
+  // ---- Join / leave ----
   function joinRoom(username, roomCode){
     myUsername = username;
     myRoomCode = roomCode;
-    const hostPeerId = sanitizeForPeerId(roomCode);
+    myClientId = getClientId();
+    const roomId = sanitizeRoomId(roomCode);
+    if (roomId === 'room-'){ setStatus('Please enter a valid room code.', true); return; }
 
     setStatus('Connecting...');
     connectBtn.disabled = true;
 
-    const prober = new Peer(randomId());
-    let settled = false;
+    roomRef = db.collection('rooms').doc(roomId);
+    messagesRef = roomRef.collection('messages');
+    membersRef = roomRef.collection('members');
+    typingRef = roomRef.collection('typing');
 
-    prober.on('open', () => {
-      const probeConn = prober.connect(hostPeerId, { reliable:true });
-
-      const timeout = setTimeout(() => {
-        if (!settled){ settled = true; prober.destroy(); becomeHost(hostPeerId); }
-      }, 4000);
-
-      probeConn.on('open', () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        peer = prober;
-        myClientId = prober.id;
-        hostConnection = probeConn;
-        isHost = false;
-
-        probeConn.send({ type:'join', username: myUsername });
-        showChatScreen();
-        appendMessage('system', '', '', 'Connected to room "' + myRoomCode + '"');
-
-        probeConn.on('data', handleClientData);
-        probeConn.on('close', handleHostGone);
-      });
-    });
-
-    prober.on('error', (err) => {
-      if (settled) return;
-      if (err.type === 'peer-unavailable'){
-        settled = true; prober.destroy(); becomeHost(hostPeerId);
-      } else {
-        settled = true;
-        setStatus('Connection error: ' + err.type, true);
-        connectBtn.disabled = false;
-      }
+    membersRef.doc(myClientId).set({
+      username: myUsername,
+      online: true,
+      joinedAt: FieldValue.serverTimestamp(),
+      lastSeen: FieldValue.serverTimestamp()
+    }, { merge: true }).then(() => {
+      showChatScreen();
+      subscribeMessages();
+      subscribeMembers();
+      subscribeTyping();
+      startHeartbeat();
+      appendSystemLocal('Connected to room "' + myRoomCode + '"');
+    }).catch((err) => {
+      console.error(err);
+      setStatus('Connection error: ' + err.message, true);
+      connectBtn.disabled = false;
     });
   }
 
@@ -709,29 +716,41 @@
 
   function sendMessage(){
     const text = messageInput.value.trim();
-    if (!text) return;
-    const msgId = genMsgId();
-    const replyTo = replyTarget ? { sender: replyTarget.sender, text: replyTarget.text } : null;
-    appendMessage('me', 'You', myClientId, text, msgId, replyTo);
-    const payload = { type:'chat', username:myUsername, senderId:myClientId, text:text, msgId:msgId, replyTo:replyTo };
-    if (isHost){ hostBroadcast(payload); }
-    else if (hostConnection && hostConnection.open){ hostConnection.send(payload); }
+    if (!text || !messagesRef) return;
+    const payload = {
+      sender: myUsername,
+      senderId: myClientId,
+      text: text,
+      timestamp: FieldValue.serverTimestamp(),
+      reactions: 0
+    };
+    if (replyTarget) payload.replyTo = { sender: replyTarget.sender, text: replyTarget.text };
+    messagesRef.add(payload).catch((err) => console.error('send failed:', err));
     messageInput.value = '';
     cancelReply();
+    clearTimeout(typingIdleTimer);
+    typingRef && typingRef.doc(myClientId).delete().catch(() => {});
+  }
+
+  function cleanupListeners(){
+    if (unsubMessages) unsubMessages();
+    if (unsubMembers) unsubMembers();
+    if (unsubTyping) unsubTyping();
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    if (staleTickTimer) clearInterval(staleTickTimer);
+    clearTimeout(typingIdleTimer);
   }
 
   function notifyLeaving(){
-    if (hasLeft) return;
+    if (hasLeft || !membersRef) return;
     hasLeft = true;
-    try {
-      if (!isHost && hostConnection && hostConnection.open){ hostConnection.send({ type:'leave' }); }
-      if (peer) peer.destroy();
-    } catch (e) {}
+    try { membersRef.doc(myClientId).set({ online: false, lastSeen: FieldValue.serverTimestamp() }, { merge: true }); } catch (e) {}
+    try { typingRef.doc(myClientId).delete(); } catch (e) {}
   }
   window.addEventListener('pagehide', notifyLeaving);
   window.addEventListener('beforeunload', notifyLeaving);
 
-  function leaveRoom(){ notifyLeaving(); location.reload(); }
+  function leaveRoom(){ notifyLeaving(); cleanupListeners(); location.reload(); }
 
   connectBtn.addEventListener('click', () => {
     const username = usernameInput.value.trim();
@@ -750,20 +769,33 @@
   replyCancelBtn.addEventListener('click', cancelReply);
 
   messageInput.addEventListener('input', () => {
-    if (!myClientId) return;
-    const payload = { type:'typing', username:myUsername, senderId:myClientId };
-    if (isHost){ hostBroadcast(payload); }
-    else if (hostConnection && hostConnection.open){ hostConnection.send(payload); }
+    if (!myClientId || !typingRef) return;
+    const now = Date.now();
+    if (now - typingLastSent > TYPING_WRITE_THROTTLE_MS){
+      typingLastSent = now;
+      typingRef.doc(myClientId).set({ username: myUsername, ts: FieldValue.serverTimestamp() });
+    }
+    clearTimeout(typingIdleTimer);
+    typingIdleTimer = setTimeout(() => { typingRef.doc(myClientId).delete().catch(() => {}); }, TYPING_IDLE_CLEAR_MS);
   });
 
   clearChatBtn.addEventListener('click', () => { clearModal.classList.add('active'); });
   clearCancelBtn.addEventListener('click', () => { clearModal.classList.remove('active'); });
-  clearConfirmBtn.addEventListener('click', () => {
-    messagesEl.innerHTML = '';
+  clearConfirmBtn.addEventListener('click', async () => {
     clearModal.classList.remove('active');
-    const payload = { type:'clearChat' };
-    if (isHost){ hostBroadcast(payload); }
-    else if (hostConnection && hostConnection.open){ hostConnection.send(payload); }
+    if (!messagesRef) return;
+    try {
+      let snap = await messagesRef.limit(450).get();
+      while (!snap.empty){
+        const batch = db.batch();
+        snap.forEach((doc) => batch.delete(doc.ref));
+        await batch.commit();
+        if (snap.size < 450) break;
+        snap = await messagesRef.limit(450).get();
+      }
+    } catch (err) {
+      console.error('clear chat failed:', err);
+    }
   });
 })();
 </script>

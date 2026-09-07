@@ -1,0 +1,37 @@
+// ─────────────────────────────────────────────────────────────
+// Paste this into: Firebase Console → Firestore Database → Rules
+// (This file is NOT auto-deployed — it's here for you to copy
+// manually, since your workflow keeps rules separate from zips.)
+// ─────────────────────────────────────────────────────────────
+//
+// This app has no login system — anyone who knows a room code can
+// read/write that room's messages, members, and typing status.
+// The room code itself acts like a shared password, so pick
+// non-guessable room codes for anything private.
+//
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /rooms/{roomId} {
+
+      match /messages/{messageId} {
+        allow read: if true;
+        allow create: if request.resource.data.keys().hasAll(['sender', 'senderId', 'text', 'timestamp'])
+                      && request.resource.data.text is string
+                      && request.resource.data.text.size() > 0
+                      && request.resource.data.text.size() < 2000;
+        allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']);
+        allow delete: if true;
+      }
+
+      match /members/{memberId} {
+        allow read, write: if true;
+      }
+
+      match /typing/{typerId} {
+        allow read, write: if true;
+      }
+    }
+  }
+}
